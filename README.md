@@ -1,0 +1,1 @@
+# Visonic PowerMax MQTT interface #
