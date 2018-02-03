@@ -1,0 +1,16 @@
+version: '3'
+services:
+  powermax-mqtt:
+    container_name: powermax-mqtt
+    build: .
+    volumes:
+      - ./log:/usr/src/app/log
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
+    environment:
+      - SERIAL_PORT=/dev/ttyUSB0
+      - MOTION_TIMEOUT=120
+      - MQTT_URL=mqtt://localhost
+      - MQTT_TOPIC=PowerMax
+    restart: on-failure
+    privileged: true

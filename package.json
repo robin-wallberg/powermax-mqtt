@@ -1,7 +1,7 @@
 {
   "name": "powermax-mqtt",
   "version": "1.0.0",
-  "description": "Visonic PowerMax MQTT gateway",
+  "description": "Visonic PowerMax MQTT interface",
   "main": "index.js",
   "author": "Robin Wallberg",
   "license": "MIT",

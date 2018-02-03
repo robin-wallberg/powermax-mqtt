@@ -1,8 +1,10 @@
 import * as mqtt from 'mqtt'
+import * as path from 'path'
 import * as SerialPort from 'serialport'
 import * as winston from 'winston'
 
 import { LogEvent, SystemState, SystemStatus, ZoneEvent, ZoneUser } from './constants'
+import Timer = NodeJS.Timer
 
 const logger = new (winston.Logger)({
   level: 'debug',
@@ -11,7 +13,7 @@ const logger = new (winston.Logger)({
       timestamp: true,
     }),
     new (winston.transports.File)({
-      filename: 'powermax.log',
+      filename: path.join('log', 'powermax.log'),
       json: false,
       timestamp: true,
     }),
@@ -19,9 +21,11 @@ const logger = new (winston.Logger)({
 })
 
 // Available configuration
-const comPort = process.env.SERIAL_PORT || '/dev/ttyUSB0'
-const mqttURL = process.env.MQTT_URL || 'mqtt://localhost'
-const mqttTopic = process.env.MQTT_TOPIC || 'PowerMax'
+const SERIAL_PORT: string = process.env.SERIAL_PORT || '/dev/ttyUSB0'
+const MOTION_TIMEOUT: number = (process.env.MOTION_TIMEOUT
+  ? Number(process.env.MOTION_TIMEOUT) : 120) * 1000 // 2 minutes
+const mqttURL: string = process.env.MQTT_URL || 'mqtt://localhost'
+const mqttTopic: string = process.env.MQTT_TOPIC || 'PowerMax'
 
 const mqttClient = mqtt.connect(mqttURL)
 mqttClient.on('connect', () => {
@@ -35,7 +39,7 @@ mqttClient.on('message', (topic, message) => {
   mqttClient.end()
 })
 
-const serialPort = new SerialPort(comPort, {
+const serialPort = new SerialPort(SERIAL_PORT, {
   baudRate: 9600,
   dataBits: 8,
   stopBits: 1,
@@ -81,16 +85,20 @@ interface IZone {
   open: boolean,
   bypassed: boolean,
   lowBattery: boolean,
-  violated: boolean,
+  motion: boolean,
   tamper: boolean,
 }
 
 // In memory state
 
+interface IZoneMotionTimers {
+  [zoneId: number]: Timer
+}
+
 // Will be initiated when the first status report is handled
 let initiated = false
-
 const zones: IZone[] = []
+const zoneMotionTimeoutTimers: IZoneMotionTimers = {}
 
 function createZones() {
   for (let zoneId = 1; zoneId <= 30; zoneId += 1) {
@@ -100,7 +108,7 @@ function createZones() {
       open: false,
       bypassed: false,
       lowBattery: false,
-      violated: false,
+      motion: false,
       tamper: false,
     })
   }
@@ -115,6 +123,7 @@ serialPort.on('error', error => {
 let connectionRetries = 0
 
 connectToPowermax()
+
 function connectToPowermax() {
   connectionRetries += 1
   if (connectionRetries <= MAX_CONNECTION_RETIRES) {
@@ -127,6 +136,9 @@ function connectToPowermax() {
       logger.debug('ITS OPEN!!!')
       sendMessage(CONNECTION_REQUEST)
     })
+  } else {
+    logger.error(`Could not connect to ${SERIAL_PORT}, gave up after ${MAX_CONNECTION_RETIRES} retires`)
+    process.exit(1)
   }
 }
 
@@ -188,7 +200,7 @@ function handleA5Event(message: number[]) {
       const zonesOpen = getZoneBits(message.slice(3, 7))
       const zonesLowBattery = getZoneBits(message.slice(7, 11))
       zones.forEach(zone => {
-        const previousZoneState = JSON.stringify(zone)
+        const previousZoneState = initiated && JSON.stringify(zone)
         zone.open = zonesOpen.includes(zone.id)
         zone.lowBattery = zonesLowBattery.includes(zone.id)
         if (initiated && JSON.stringify(zone) !== previousZoneState) {
@@ -201,7 +213,7 @@ function handleA5Event(message: number[]) {
       const zonesStatus = getZoneBits(message.slice(3, 7))  // TODO Which status?
       const zonesTamper = getZoneBits(message.slice(7, 11))
       zones.forEach(zone => {
-        const previousZoneState = JSON.stringify(zone)
+        const previousZoneState = initiated && JSON.stringify(zone)
         zone.tamper = zonesTamper.includes(zone.id)
         if (initiated && JSON.stringify(zone) !== previousZoneState) {
           publishZone(zone)
@@ -229,7 +241,7 @@ function handleA5Event(message: number[]) {
       const enrolledZones = getZoneBits(message.slice(3, 7))
       const bypassedZones = getZoneBits(message.slice(7, 11))
       zones.forEach(zone => {
-        const previousZoneState = JSON.stringify(zone)
+        const previousZoneState = initiated && JSON.stringify(zone)
         zone.enrolled = enrolledZones.includes(zone.id)
         zone.bypassed = bypassedZones.includes(zone.id)
         if (initiated && JSON.stringify(zone) !== previousZoneState) {
@@ -265,8 +277,12 @@ function handleZoneEvent(zone: IZone, event: number) {
       zone.open = false
       break
     case ZoneEvent.VIOLATED:
-      zone.violated = true
-      // TODO Start reset timer here
+      zone.motion = true
+      const currentTimerId = zoneMotionTimeoutTimers[zone.id]
+      if (currentTimerId) {
+        clearTimeout(currentTimerId)
+      }
+      zoneMotionTimeoutTimers[zone.id] = setTimeout(resetViolatedZone.bind(null, zone), MOTION_TIMEOUT)
       break
     case ZoneEvent.LOW_BATTERY:
       zone.lowBattery = true
@@ -276,6 +292,15 @@ function handleZoneEvent(zone: IZone, event: number) {
   }
 
   if (JSON.stringify(zone) !== previousZoneState) {
+    publishZone(zone)
+  }
+}
+
+function resetViolatedZone(zone: IZone) {
+  zoneMotionTimeoutTimers[zone.id] = null
+  const previousZoneState = initiated && JSON.stringify(zone)
+  zone.motion = false
+  if (initiated && JSON.stringify(zone) !== previousZoneState) {
     publishZone(zone)
   }
 }
