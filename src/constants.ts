@@ -1,3 +1,36 @@
+export const MAX_CONNECTION_RETIRES = 5
+
+export const KEEP_ALIVE_TIMEOUT = 2 * 60 * 1000 // 2 minutes
+
+export enum MqttCommand {
+  DISARM = 'DISARM',
+  ARM_HOME = 'ARM_HOME',
+  ARM_AWAY = 'ARM_AWAY',
+}
+
+export enum MqttStatus {
+  DISARMED = 'disarmed',
+  ARMED_HOME = 'armed_home',
+  ARMED_AWAY = 'armed_away',
+  PENDING = 'pending',
+  TRIGGERED = 'triggered',
+}
+
+export const PREAMBLE = 0x0D
+export const POSTAMBLE = 0x0A
+export const ACK = [0x02, 0x43]
+export const CONNECTION_REQUEST = [0xAB, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x43]
+export const EVENT_LOG_RESPONSE = [0xA0]
+export const A5_RESPONSE = [0xA5]
+export const A5_KEEP_ALIVE = 0x02
+export const A5_TAMPER = 0x03
+export const A5_EVENT = 0x04
+export const A5_ENROLLED = 0x06
+export const ACCESS_DENIED = [0x08, 0x43]
+export const DISARM_REQUEST = (pin: number[]) => [0xA1, 0x00, 0x00, 0x00, ...pin, 0x00, 0x00, 0x00, 0x00, 0x00, 0x43]
+export const ARM_HOME_REQUEST = (pin: number[]) => [0xA1, 0x00, 0x00, 0x04, ...pin, 0x00, 0x00, 0x00, 0x00, 0x00, 0x43]
+export const ARM_AWAY_REQUEST = (pin: number[]) => [0xA1, 0x00, 0x00, 0x05, ...pin, 0x00, 0x00, 0x00, 0x00, 0x00, 0x43]
+
 export enum SystemStatus {
   DISARM = 0x00,
   EXIT_DELAY_1 = 0x01,

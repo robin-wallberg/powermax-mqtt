@@ -8,6 +8,7 @@ services:
     devices:
       - /dev/ttyUSB0:/dev/ttyUSB0
     environment:
+      - USER_CODE=0000
       - SERIAL_PORT=/dev/ttyUSB0
       - MOTION_TIMEOUT=120
       - MQTT_URL=mqtt://localhost
