@@ -271,24 +271,29 @@ function publishZone(zone: IZone) {
   const topic = `${config.mqttTopic}/${zone.id}`
   const data = JSON.stringify(zone, null, 2)
   logger.info(`MQTT publish: ${topic} -> ${data}`)
-  mqttClient.publish(topic, data)
+  mqttClient.publish(topic, data, { qos: 0, retain: true })
+}
+
+function publishSystemStatus(mqttStatus: MqttStatus) {
+  logger.info(`MQTT publish: ${config.mqttTopic} -> ${mqttStatus}`)
+  mqttClient.publish(config.mqttTopic, mqttStatus, { qos: 0, retain: true })
 }
 
 function handleSystemStatus(systemStatus: number) {
   switch (systemStatus) {
     case SystemStatus.ARMED_AWAY:
-      mqttClient.publish(config.mqttTopic, MqttStatus.ARMED_AWAY)
+      publishSystemStatus(MqttStatus.ARMED_AWAY)
       break
     case SystemStatus.ARMED_HOME:
-      mqttClient.publish(config.mqttTopic, MqttStatus.ARMED_HOME)
+      publishSystemStatus(MqttStatus.ARMED_HOME)
       break
     case SystemStatus.DISARM:
-      mqttClient.publish(config.mqttTopic, MqttStatus.DISARMED)
+      publishSystemStatus(MqttStatus.DISARMED)
       break
     case SystemStatus.ENTRY_DELAY:
     case SystemStatus.EXIT_DELAY_1:
     case SystemStatus.EXIT_DELAY_2:
-      mqttClient.publish(config.mqttTopic, MqttStatus.PENDING)
+      publishSystemStatus(MqttStatus.PENDING)
       break
   }
 }
