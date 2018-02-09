@@ -59,6 +59,7 @@ let logger: winston.LoggerInstance
 let connectionAttempt: number = 0
 let initiated: boolean = false
 let keepAliveTimeout: Timer = null
+let alarmTriggered = false
 
 const zones: IZone[] = []
 const zoneResetMotionTimers: IZoneMotionTimers = {}
@@ -233,7 +234,7 @@ function handleTamperMessage(message: number[]) {
 function handleEventMessage(message: number[]) {
   const systemStatus = SystemStatus[message[3]]
   const systemStates = getSystemStates(message[4])
-  handleSystemStatus(message[3])
+  handleSystemStatus(message[3], systemStates)
   if (systemStates.includes(SystemState[SystemState.ZONE_EVENT])) {
     const zoneId = message[5]
     const zoneEvent = message[6]
@@ -279,22 +280,28 @@ function publishSystemStatus(mqttStatus: MqttStatus) {
   mqttClient.publish(config.mqttTopic, mqttStatus, { qos: 0, retain: true })
 }
 
-function handleSystemStatus(systemStatus: number) {
-  switch (systemStatus) {
-    case SystemStatus.ARMED_AWAY:
-      publishSystemStatus(MqttStatus.ARMED_AWAY)
-      break
-    case SystemStatus.ARMED_HOME:
-      publishSystemStatus(MqttStatus.ARMED_HOME)
-      break
-    case SystemStatus.DISARM:
-      publishSystemStatus(MqttStatus.DISARMED)
-      break
-    case SystemStatus.ENTRY_DELAY:
-    case SystemStatus.EXIT_DELAY_1:
-    case SystemStatus.EXIT_DELAY_2:
-      publishSystemStatus(MqttStatus.PENDING)
-      break
+function handleSystemStatus(systemStatus: number, systemStates: string[]) {
+  if (systemStates.includes(SystemState[SystemState.ALARM_EVENT])) {
+    alarmTriggered = true
+    publishSystemStatus(MqttStatus.TRIGGERED)
+  } else {
+    switch (systemStatus) {
+      case SystemStatus.ARMED_AWAY:
+        !alarmTriggered && publishSystemStatus(MqttStatus.ARMED_AWAY)
+        break
+      case SystemStatus.ARMED_HOME:
+        !alarmTriggered && publishSystemStatus(MqttStatus.ARMED_HOME)
+        break
+      case SystemStatus.DISARM:
+        alarmTriggered = false
+        publishSystemStatus(MqttStatus.DISARMED)
+        break
+      case SystemStatus.ENTRY_DELAY:
+      case SystemStatus.EXIT_DELAY_1:
+      case SystemStatus.EXIT_DELAY_2:
+        !alarmTriggered && publishSystemStatus(MqttStatus.PENDING)
+        break
+    }
   }
 }
 
