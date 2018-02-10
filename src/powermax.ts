@@ -119,10 +119,9 @@ function handleSerialPortOpen(error: Error) {
 function handleSerialPortData(data: Buffer) {
   const uint8Array = new Uint8Array(data)
   const bytes: number[] = [...uint8Array.values()]
-  // logger.debug(`GETTING ${toHexString(uint8Array)}`)
 
   if (bytes[0] !== PREAMBLE || bytes[bytes.length - 1] !== POSTAMBLE) {
-    logger.error('Not a valid message')
+    logger.error('Not a valid message!')
     return
   }
 
@@ -132,7 +131,7 @@ function handleSerialPortData(data: Buffer) {
   if (checksum === calculatedChecksum) {
     handleMessage(payload)
   } else {
-    logger.error('CHECKSUM WAS NOT CORRECT!')
+    logger.error('Invalid checksum!')
   }
 }
 
@@ -151,16 +150,14 @@ function handleMessage(message: number[]) {
   } else if (startsWith(message, A5_RESPONSE)) {
     handleA5Event(message)
   } else if (startsWith(message, ACCESS_DENIED)) {
-    logger.warn('ACCESS DENIED!')
+    logger.warn('Access denied, incorrect user code!')
   } else {
-    logger.debug(`UNKNOWN: ${toHexString(new Uint8Array(message))}`)
+    logger.debug(`Unknown message: ${toHexString(new Uint8Array(message))}`)
   }
 }
 
 function sendMessage(message: number[]) {
-  const checksum = calculateChecksum(message)
-  // logger.debug(`SENDING ${toHexString(new Uint8Array([PREAMBLE, ...message, checksum, POSTAMBLE]))}`)
-  serialPort.write(Buffer.from([PREAMBLE, ...message, checksum, POSTAMBLE]), 'hex')
+  serialPort.write(Buffer.from([PREAMBLE, ...message, calculateChecksum(message), POSTAMBLE]), 'hex')
 }
 
 function handleEventLogResponse(message: number[]) {
@@ -196,7 +193,7 @@ function handleA5Event(message: number[]) {
       handleEnrolledMessage(message)
       break
     default:
-      logger.warn(`UNKNOWN A5 message: ${toHexString(new Uint8Array(message))}`)
+    // Skipping other A5 messages
   }
   if (!initiated && message[1] === message[2]) {
     initiated = true
@@ -271,12 +268,12 @@ function updateZone(zone: IZone, updateFunction: () => void) {
 function publishZone(zone: IZone) {
   const topic = `${config.mqttTopic}/${zone.id}`
   const data = JSON.stringify(zone, null, 2)
-  logger.info(`MQTT publish: ${topic} -> ${data}`)
+  logger.info(` -> Outgoing MQTT publish: ${topic} -> ${data}`)
   mqttClient.publish(topic, data, { qos: 0, retain: true })
 }
 
 function publishSystemStatus(mqttStatus: MqttStatus) {
-  logger.info(`MQTT publish: ${config.mqttTopic} -> ${mqttStatus}`)
+  logger.info(` -> Outgoing MQTT publish: ${config.mqttTopic} -> ${mqttStatus}`)
   mqttClient.publish(config.mqttTopic, mqttStatus, { qos: 0, retain: true })
 }
 
@@ -358,7 +355,7 @@ function resetViolatedZone(zone: IZone) {
 function handleMqttMessage(topic: string, payload: Buffer) {
   if (topic === config.mqttCommandTopic) {
     const command = payload.toString()
-    logger.debug('MQTT TOPIC:', topic, ' MESSAGE:', payload.toString())
+    logger.debug(` <- Incoming MQTT topic: ${topic}, message: ${payload.toString()}`)
     switch (command) {
       case MqttCommand.DISARM:
         sendMessage(DISARM_REQUEST(config.pinBytes))
