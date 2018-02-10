@@ -2,7 +2,7 @@ version: '3'
 services:
   powermax-mqtt:
     container_name: powermax-mqtt
-    build: .
+    image: robinwallberg/powermax-mqtt
     volumes:
       - ./log:/usr/src/app/log
     devices:
